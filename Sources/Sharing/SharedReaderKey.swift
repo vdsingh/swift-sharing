@@ -153,19 +153,17 @@ extension SharedReader {
     try self.init(rethrowing: value(), key)
   }
 
-  // TODO: Bring this back in 1.0
+  @available(*, unavailable, message: "Assign a default value")
+  public init(_ key: some SharedReaderKey<Value>) {
+    fatalError()
+  }
 
-  // @available(*, unavailable, message: "Assign a default value")
-  // public init(_ key: some SharedReaderKey<Value>) {
-  //   fatalError()
-  // }
-  //
-  // @_disfavoredOverload
-  // @_documentation(visibility: private)
-  // @available(*, unavailable, message: "Assign a default value")
-  // public init(_ key: some SharedKey<Value>) {
-  //   fatalError()
-  // }
+  @_disfavoredOverload
+  @_documentation(visibility: private)
+  @available(*, unavailable, message: "Assign a default value")
+  public init(_ key: some SharedKey<Value>) {
+    fatalError()
+  }
 
   private init(
     rethrowing value: @autoclosure () throws -> Value, _ key: some SharedReaderKey<Value>

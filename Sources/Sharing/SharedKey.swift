@@ -10,13 +10,6 @@ import Dependencies
 ///
 /// See the article <doc:PersistenceStrategies#Custom-persistence> for more information.
 public protocol SharedKey<Value>: SharedReaderKey {
-  // TODO: Remove in 1.0
-  /// Saves a value to storage.
-  ///
-  /// - Parameter value: The value to save.
-  @available(*, deprecated, message: "Implement 'save(_:immediately:)', instead.")
-  func save(_ value: Value)
-
   /// Saves a value to storage.
   ///
   /// - Parameters:
@@ -26,23 +19,6 @@ public protocol SharedKey<Value>: SharedReaderKey {
   ///     debouncing, if `immediately` is `false`. If `immediately` is `true` it should bypass these
   ///     delays.
   func save(_ value: Value, immediately: Bool)
-}
-
-// TODO: Remove in 1.0
-extension SharedKey {
-  @available(*, deprecated, message: "Call 'save(_:immediately:)', instead .")
-  public func save(_ value: Value) {
-    save(value, immediately: false)
-  }
-
-  @available(
-    *,
-    deprecated,
-    message: "Explicitly implement 'save(_:immediately:)' instead of 'save(_:)'."
-  )
-  public func save(_ value: Value, immediately: Bool) {
-    save(value)
-  }
 }
 
 extension Shared {
@@ -107,12 +83,10 @@ extension Shared {
     try self.init(rethrowing: value(), key)
   }
 
-  // TODO: Bring this back in 1.0
-
-  // @available(*, unavailable, message: "Assign a default value")
-  // public init(_ key: some SharedKey<Value>) {
-  //   fatalError()
-  // }
+  @available(*, unavailable, message: "Assign a default value")
+  public init(_ key: some SharedKey<Value>) {
+    fatalError()
+  }
 
   private init(
     rethrowing value: @autoclosure () throws -> Value, _ key: some SharedKey<Value>

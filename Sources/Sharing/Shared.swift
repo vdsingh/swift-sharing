@@ -113,7 +113,7 @@ public struct Shared<Value> {
     }
     @available(
       *,
-      deprecated,  // TODO: Make unavailable in 1.0
+      unavailable,
       message: "Use '$shared.withLock' to modify a shared value with exclusive access."
     )
     nonmutating set {

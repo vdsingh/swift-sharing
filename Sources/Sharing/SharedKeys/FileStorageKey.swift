@@ -200,39 +200,8 @@
         }
       }
       setUpSources()
-      // TODO: Remove 'willResign' and 'willTerminate' in 1.0
-      let willResign: (any NSObjectProtocol)?
-      if let willResignNotificationName {
-        willResign = NotificationCenter.default.addObserver(
-          forName: willResignNotificationName, object: nil, queue: .main
-        ) { [weak self] _ in
-          guard let self else { return }
-          performImmediately()
-        }
-      } else {
-        willResign = nil
-      }
-      let willTerminate: (any NSObjectProtocol)?
-      if let willTerminateNotificationName {
-        willTerminate = NotificationCenter.default.addObserver(
-          forName: willTerminateNotificationName,
-          object: nil,
-          queue: .main
-        ) { [weak self] _ in
-          guard let self else { return }
-          performImmediately()
-        }
-      } else {
-        willTerminate = nil
-      }
       return SharedSubscription {
         cancellable.withValue { $0?.cancel() }
-        if let willResign {
-          NotificationCenter.default.removeObserver(willResign)
-        }
-        if let willTerminate {
-          NotificationCenter.default.removeObserver(willTerminate)
-        }
       }
     }
 
@@ -398,34 +367,6 @@
       hasher.combine(id)
     }
   }
-
-  // TODO: Remove in 1.0
-  @_spi(Internals) public let willResignNotificationName: Notification.Name? = {
-    #if os(macOS)
-      return NSApplication.willResignActiveNotification
-    #elseif os(iOS) || os(tvOS) || os(visionOS)
-      return UIApplication.willResignActiveNotification
-    #elseif os(watchOS)
-      if #available(watchOS 7, *) {
-        return WKExtension.applicationWillResignActiveNotification
-      } else {
-        return nil
-      }
-    #else
-      return nil
-    #endif
-  }()
-
-  // TODO: Remove in 1.0
-  @_spi(Internals) public let willTerminateNotificationName: Notification.Name? = {
-    #if os(macOS)
-      return NSApplication.willTerminateNotification
-    #elseif os(iOS) || os(tvOS) || os(visionOS)
-      return UIApplication.willTerminateNotification
-    #else
-      return nil
-    #endif
-  }()
 
   private let _defaultEncoder: JSONEncoder = {
     let encoder = JSONEncoder()

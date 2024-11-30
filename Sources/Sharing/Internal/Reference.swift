@@ -49,9 +49,7 @@ final class _BoxReference<Value>: MutableReference, Observable, Perceptible, @un
     let subject = PassthroughRelay<Value>()
 
     var publisher: any Publisher<Value, Never> {
-      subject
-      // TODO: Uncomment for 1.0
-      // .prepend(lock.withLock { value })
+      subject.prepend(lock.withLock { value })
     }
   #else
     private var value: Value
@@ -149,9 +147,7 @@ final class _PersistentReference<Key: SharedReaderKey>:
     private let subject = PassthroughRelay<Value>()
 
     var publisher: any Publisher<Key.Value, Never> {
-      subject
-      // TODO: Uncomment for 1.0
-      // .prepend(lock.withLock { value })
+      subject.prepend(lock.withLock { value })
     }
   #else
     private var value: Key.Value

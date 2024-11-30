@@ -297,26 +297,28 @@ struct FileStorageTests {
       }
     }
 
-    @MainActor
-    @Test func updateFileSystemFromBackgroundThread() async throws {
-      @Shared(.fileStorage(.fileURL)) var count = 0
+    #if canImport(Combine)
+      @MainActor
+      @Test func updateFileSystemFromBackgroundThread() async throws {
+        @Shared(.fileStorage(.fileURL)) var count = 0
 
-      await confirmation { confirm in
-        let cancellable = $count.publisher.sink { _ in
-          #expect(Thread.isMainThread)
-          confirm()
-        }
-        defer { _ = cancellable }
+        await confirmation { confirm in
+          let cancellable = $count.publisher.dropFirst().sink { _ in
+            #expect(Thread.isMainThread)
+            confirm()
+          }
+          defer { _ = cancellable }
 
-        await withUnsafeContinuation { continuation in
-          DispatchQueue.global().async {
-            #expect(!Thread.isMainThread)
-            try! Data("1".utf8).write(to: .fileURL)
-            continuation.resume()
+          await withUnsafeContinuation { continuation in
+            DispatchQueue.global().async {
+              #expect(!Thread.isMainThread)
+              try! Data("1".utf8).write(to: .fileURL)
+              continuation.resume()
+            }
           }
         }
       }
-    }
+    #endif
 
     @MainActor
     @Test func multipleMutations() async throws {

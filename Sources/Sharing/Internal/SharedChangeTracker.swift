@@ -173,6 +173,5 @@ private enum SharedChangeTrackerKey: DependencyKey {
 
 private enum SharedChangeTrackersKey: DependencyKey {
   static var liveValue: Set<SharedChangeTracker> { [] }
-  // TODO: Default to empty in 1.0
-  static var testValue: Set<SharedChangeTracker> { [SharedChangeTracker()] }
+  static var testValue: Set<SharedChangeTracker> { [] }
 }
