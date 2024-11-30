@@ -1,17 +1,4 @@
 version: 1
 builder:
   configs:
-  - platform: ios
-    scheme: Sharing
-    swift_version: 5.9
-  - platform: macos-xcodebuild
-    scheme: Sharing
-    swift_version: 5.9
-  - platform: tvos
-    scheme: Sharing
-    swift_version: 5.9
-  - platform: watchos
-    scheme: Sharing
-    swift_version: 5.9
-  - documentation_targets: [Sharing]
-    swift_version: 5.9
+  - scheme: Sharing
