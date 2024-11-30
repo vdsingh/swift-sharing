@@ -32,8 +32,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-concurrency-extras",
       "state" : {
-        "revision" : "6054df64b55186f08b6d0fd87152081b8ad8d613",
-        "version" : "1.2.0"
+        "revision" : "163409ef7dae9d960b87f34b51587b6609a76c1f",
+        "version" : "1.3.0"
       }
     },
     {
@@ -50,8 +50,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-dependencies",
       "state" : {
-        "revision" : "28f82715ccd6799d7ed46c0720c23c768ef6b55c",
-        "version" : "1.5.1"
+        "revision" : "7d2eb4ad20efb2838269645410d26b64ca48d8aa",
+        "version" : "1.6.1"
       }
     },
     {

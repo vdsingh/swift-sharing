@@ -124,8 +124,8 @@
 				CAE088AB2CD16A3200B2E0FB /* CaseStudiesTests */,
 				CAE088B52CD16A3200B2E0FB /* CaseStudiesUITests */,
 				DC5EC4362CE6A9B1009AB902 /* FirebaseDemo */,
-				CA7641572CF4ECF200C1CE55 /* GRDBDemo */,
 				DCA7F4F62CDBED8000B9C5F7 /* Frameworks */,
+				CA7641572CF4ECF200C1CE55 /* GRDBDemo */,
 				CAE088992CD16A3100B2E0FB /* Products */,
 			);
 			sourceTree = "<group>";
