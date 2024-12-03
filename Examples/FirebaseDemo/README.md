@@ -11,33 +11,35 @@ accordingly:
 
  2. Configure the Firebase project for this iOS application
 
+     1. Create a new Firebase project and name it anything you want.
+     
      1. Click the "iOS" button under "Get started by adding Firebase to your app"
 
-     2. Enter "co.pointfree.FirebaseDemo" as the Apple bundle ID and register the application
+     1. Enter "co.pointfree.FirebaseDemo" as the Apple bundle ID and register the application
 
-     3. Download the "GoogleService-Info.plist" config file, drag it into this Xcode project, and
+     1. Download the "GoogleService-Info.plist" config file, drag it into this Xcode project, and
         add it to the "FirebaseDemo" application target
 
-     4. Click "Next" on each step and finally click "Continue to console"
+     1. Click "Next" on each step and finally click "Continue to console"
 
  3. Add a remote config boolean to your Firebase project
 
      1. Navigate to the "Remote Config" section of your project
 
-     2. Click "Create configuration" to create your first parameter
+     1. Click "Create configuration" to create your first parameter
 
-     3. Create a parameter with the name (key) "showPromo", the data type "Boolean", provide a
+     1. Create a parameter with the name (key) "showPromo", the data type "Boolean", provide a
         default value of "false", and click "Save"
 
-     4. Click the "Publish changes" button and confirm to roll out the parameter
+     1. Click the "Publish changes" button and confirm to roll out the parameter
 
  4. Run the iOS demo
 
      1. In Xcode, build and run FirebaseDemo in the simulator
 
-     2. In the Firebase project's web console, "Edit" the "showPromo" parameter and flip the
+     1. In the Firebase project's web console, "Edit" the "showPromo" parameter and flip the
         default value to "true"
 
-     3. Click the "Publish changes" button and confirm to roll out the parameter and watch the
+     1. Click the "Publish changes" button and confirm to roll out the parameter and watch the
         simulator live-update in seconds. (You can edit and re-publish the parameter as many times
         as you'd like to see the change reflected in the simulator.)

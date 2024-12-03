@@ -6,14 +6,19 @@ struct ContentView: View {
   @SharedReader(.remoteConfig("showPromo")) var showPromo = false
 
   var body: some View {
-    VStack {
-      Image(systemName: "globe")
-        .imageScale(.large)
-        .foregroundStyle(.tint)
-      Text("Hello, world!")
-
+    ZStack(alignment: .bottom) {
+      Form {
+        Image(systemName: "globe")
+          .foregroundStyle(.tint)
+        Text("Hello, world!")
+      }
       if showPromo {
         Text("Our promo has started!")
+          .font(.title3)
+          .foregroundColor(.white)
+          .padding()
+          .background(Color.blue)
+          .cornerRadius(8)
       }
     }
   }
