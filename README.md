@@ -3,13 +3,13 @@
 Instantly share state among your app's features and external persistence layers, including user
 defaults, the file system, and more.
 
-<!-- [![CI](https://github.com/pointfreeco/swift-sharing/workflows/CI/badge.svg)](https://github.com/pointfreeco/swift-sharing/actions?query=workflow%3ACI) -->
-<!-- [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fpointfreeco%2Fswift-sharing%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/pointfreeco/swift-sharing) -->
-<!-- [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fpointfreeco%2Fswift-sharing%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/pointfreeco/swift-sharing) -->
+[![CI](https://github.com/pointfreeco/swift-sharing/workflows/CI/badge.svg)](https://github.com/pointfreeco/swift-sharing/actions?query=workflow%3ACI)
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fpointfreeco%2Fswift-sharing%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/pointfreeco/swift-sharing)
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fpointfreeco%2Fswift-sharing%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/pointfreeco/swift-sharing)
 
   * [Learn more](#learn-more)
   * [Overview](#overview)
-  * [Demos](#Demos)
+  * [Demos](#demos)
   * [Documentation](#documentation)
   * [Installation](#installation)
   * [Community](#community)
