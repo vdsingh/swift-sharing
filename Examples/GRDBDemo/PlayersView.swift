@@ -1,38 +1,102 @@
+import Combine
 import Dependencies
 import Foundation
 import GRDB
 import Sharing
 import SwiftUI
 
-@MainActor
-private let readMe: LocalizedStringKey = """
+private let readMe = """
   This app demonstrates a simple way to persist data with GRDB. It introduces a new \
-  `SharedReaderKey` conformance, `query`, which queries a database for populating state. When the \
+  `SharedReaderKey` conformance, `fetch`, which queries a database for populating state. When the \
   database is updated the state will automatically be refreshed.
 
-  A list of players is powered by `query`. The demo also shows how to perform a dynamic query on \
+  A list of players is powered by `fetch`. The demo also shows how to perform a dynamic query on \
   the players in the form of sorting the list by name or their injury status.
   """
+
+@MainActor
+@Observable
+final class PlayersModel {
+  @ObservationIgnored
+  @Shared(.appStorage("order")) var order: Players.Order = .name
+
+  @ObservationIgnored
+  @SharedReader var players: [Player]
+
+  @ObservationIgnored
+  @SharedReader(.fetchOne(sql: #"SELECT count(*) FROM "players" WHERE NOT "isInjured""#))
+  var uninjuredCount = 0
+
+  @ObservationIgnored
+  @Dependency(\.defaultDatabase) var database
+
+  var cancellables: Set<AnyCancellable> = []
+
+  init() {
+    _players = SharedReader(.fetch(Players(order: _order.wrappedValue), animation: .default))
+    $order.publisher.dropFirst().sink { @Sendable [weak self] order in
+      Task { await self?.updatePlayerQuery() }
+    }
+    .store(in: &cancellables)
+  }
+
+  func deleteItems(offsets: IndexSet) {
+    do {
+      try database.write { db in
+        _ = try Player.deleteAll(db, keys: offsets.map { players[$0].id })
+      }
+    } catch {
+      reportIssue(error)
+    }
+  }
+
+  private func updatePlayerQuery() async {
+    do {
+      let players = try await SharedReader(
+        require: .fetch(Players(order: order), animation: .default)
+      )
+      withAnimation {
+        $players = players
+      }
+    } catch {
+      reportIssue(error)
+    }
+  }
+}
+
+struct Players: FetchKeyRequest {
+  enum Order: String { case name, isInjured }
+  let order: Order
+  init(order: Order = .name) {
+    self.order = order
+  }
+  func fetch(_ db: Database) throws -> [Player] {
+    let ordering: any SQLOrderingTerm =
+      switch order {
+      case .name:
+        Column("name")
+      case .isInjured:
+        Column("isInjured").desc
+      }
+    return
+      try Player
+      .all()
+      .order(ordering)
+      .fetchAll(db)
+  }
+}
 
 struct PlayersView: View {
   @State private var aboutIsPresented = false
   @State private var addPlayerIsPresented = false
-  @Dependency(\.defaultDatabase) private var database
-  @Shared(.appStorage("order")) private var order: Players.Order = .name
-  @SharedReader private var players: [Player]
-  @SharedReader(.fetchOne(sql: #"SELECT count(*) FROM "players" WHERE "isInjured" = 0"#))
-  private var uninjuredCount = 0
-
-  init() {
-    _players = SharedReader(.query(Players(order: _order.wrappedValue)))
-  }
+  let model: PlayersModel
 
   var body: some View {
     NavigationStack {
       List {
-        if !players.isEmpty {
+        if !model.players.isEmpty {
           Section {
-            ForEach(players, id: \.id) { player in
+            ForEach(model.players, id: \.id) { player in
               HStack {
                 Text(player.name)
                 Spacer()
@@ -42,16 +106,16 @@ struct PlayersView: View {
                 }
               }
             }
-            .onDelete(perform: deleteItems)
+            .onDelete(perform: model.deleteItems)
           } header: {
-            Text("^[\(uninjuredCount) player](inflect: true) are available")
+            Text("^[\(model.uninjuredCount) player](inflect: true) are available")
           }
         }
       }
       .navigationTitle("Players")
       .toolbar {
         ToolbarItem {
-          Picker("Sort", selection: Binding($order)) {
+          Picker("Sort", selection: Binding(model.$order)) {
             Section {
               Text("Name").tag(Players.Order.name)
               Text("Is injured?").tag(Players.Order.isInjured)
@@ -64,7 +128,7 @@ struct PlayersView: View {
           Button {
             addPlayerIsPresented = true
           } label: {
-            Label("Add Item", systemImage: "plus")
+            Label("Add Player", systemImage: "plus")
           }
         }
         ToolbarItem(placement: .cancellationAction) {
@@ -73,9 +137,6 @@ struct PlayersView: View {
           }
         }
       }
-    }
-    .onChange(of: order) {
-      $players = SharedReader(.query(Players(order: order)))
     }
     .sheet(isPresented: $addPlayerIsPresented) {
       AddPlayerView()
@@ -86,38 +147,6 @@ struct PlayersView: View {
         Text(readMe)
       }
       .presentationDetents([.fraction(0.7)])
-    }
-  }
-
-  private func deleteItems(offsets: IndexSet) {
-    do {
-      try database.write { db in
-        _ = try Player.deleteAll(db, keys: offsets.map { players[$0].id })
-      }
-    } catch {
-      reportIssue(error)
-    }
-  }
-
-  struct Players: GRDBQuery {
-    enum Order: String { case name, isInjured }
-    let order: Order
-    init(order: Order = .name) {
-      self.order = order
-    }
-    func fetch(_ db: Database) throws -> [Player] {
-      let ordering: any SQLOrderingTerm =
-        switch order {
-        case .name:
-          Column("name")
-        case .isInjured:
-          Column("isInjured").desc
-        }
-      return
-        try Player
-        .all()
-        .order(ordering)
-        .fetchAll(db)
     }
   }
 }
@@ -160,5 +189,5 @@ struct AddPlayerView: View {
       }
     }
   }
-  PlayersView()
+  PlayersView(model: PlayersModel())
 }

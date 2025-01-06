@@ -28,15 +28,6 @@ public struct SharedReader<Value> {
   }
 
   init(reference: some Reference<Value>) {
-    #if canImport(SwiftUI)
-      if !isTesting, Value.self is any _IdentifiedCollection.Type {
-        func open(_ reference: some Reference<Value>) -> any Reference<Value> {
-          _CachedReference(base: reference)
-        }
-        self.box = Box(open(reference))
-        return
-      }
-    #endif
     self.box = Box(reference)
   }
 
@@ -106,13 +97,13 @@ public struct SharedReader<Value> {
   /// )
   /// ```
   #if compiler(>=6)
-  public static func constant(_ value: sending Value) -> Self {
-    Self(Shared(value: value))
-  }
+    public static func constant(_ value: sending Value) -> Self {
+      Self(Shared(value: value))
+    }
   #else
-  public static func constant(_ value: Value) -> Self {
-    Self(Shared(value: value))
-  }
+    public static func constant(_ value: Value) -> Self {
+      Self(Shared(value: value))
+    }
   #endif
 
   /// The underlying value referenced by the shared variable.
@@ -173,8 +164,40 @@ public struct SharedReader<Value> {
   /// synchronized. Some persistence strategies, however, may not have the ability to subscribe to
   /// their external source. In these cases, you should call this method whenever you need the most
   /// up-to-date value.
-  public func load() {
-    reference.load()
+  public func load() async throws {
+    try await reference.load()
+  }
+
+  /// Whether or not an associated shared key is loading data from an external source.
+  public var isLoading: Bool {
+    reference.isLoading
+  }
+
+  /// An error encountered during the most recent attempt to load data.
+  ///
+  /// This value is `nil` unless a load attempt failed. It contains the latest error from the
+  /// underlying ``SharedReaderKey``. Access it from `@Shared`'s projected value:
+  ///
+  /// ```swift
+  /// @SharedReader(.fileStorage(.users)) var users: [User] = []
+  ///
+  /// var body: some View {
+  ///   if let loadError = $users.loadError {
+  ///     ContentUnavailableView {
+  ///       Label("Failed to load users", systemImage: "xmark.circle")
+  ///     } description: {
+  ///       Text(loadError.localizedDescription)
+  ///     }
+  ///   } else {
+  ///     ForEach(users) { user in /* ... */ }
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// > When a load error occurs, ``wrappedValue`` retains results from the last successful fetch.
+  /// > Its value will update once a new load succeeds.
+  public var loadError: (any Error)? {
+    reference.loadError
   }
 
   private final class Box: @unchecked Sendable {

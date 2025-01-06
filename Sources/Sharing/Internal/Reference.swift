@@ -16,8 +16,10 @@ protocol Reference<Value>:
   associatedtype Value
 
   var id: ObjectIdentifier { get }
+  var isLoading: Bool { get }
+  var loadError: (any Error)? { get }
   var wrappedValue: Value { get }
-  func load()
+  func load() async throws
   func touch()
   #if canImport(Combine)
     var publisher: any Publisher<Value, Never> { get }
@@ -25,6 +27,7 @@ protocol Reference<Value>:
 }
 
 protocol MutableReference<Value>: Reference, Equatable {
+  var saveError: (any Error)? { get }
   var snapshot: Value? { get }
   func withLock<R>(_ body: (inout Value) throws -> R) rethrows -> R
   func takeSnapshot(
@@ -34,7 +37,7 @@ protocol MutableReference<Value>: Reference, Equatable {
     line: UInt,
     column: UInt
   )
-  func save()
+  func save() async throws
 }
 
 final class _BoxReference<Value>: MutableReference, Observable, Perceptible, @unchecked Sendable {
@@ -60,7 +63,25 @@ final class _BoxReference<Value>: MutableReference, Observable, Perceptible, @un
     self.value = wrappedValue
   }
 
+  deinit {
+    #if canImport(Combine)
+      subject.send(completion: .finished)
+    #endif
+  }
+
   var id: ObjectIdentifier { ObjectIdentifier(self) }
+
+  var isLoading: Bool {
+    false
+  }
+
+  var loadError: (any Error)? {
+    nil
+  }
+
+  var saveError: (any Error)? {
+    nil
+  }
 
   var wrappedValue: Value {
     access(keyPath: \.value)
@@ -170,37 +191,112 @@ final class _PersistentReference<Key: SharedReaderKey>:
     private var value: Key.Value
   #endif
 
+  private var _isLoading = false
+  private var _loadError: (any Error)?
+  private var _saveError: (any Error)?
   private var _referenceCount = 0
   private var subscription: SharedSubscription?
 
-  init(key: Key, value initialValue: Key.Value) {
+  init(key: Key, value initialValue: Key.Value, isPreloaded: Bool) {
     self.key = key
-    self.value = key.load(initialValue: initialValue) ?? initialValue
-    self.subscription = key.subscribe(initialValue: initialValue) { [weak self] newValue in
+    self.value = initialValue
+    let callback: @Sendable (Result<Value?, any Error>) -> Void = { [weak self] result in
       guard let self else { return }
-      self.withMutation(keyPath: \.value) {
-        self.lock.withLock { self.value = newValue ?? initialValue }
+      isLoading = false
+      switch result {
+      case let .failure(error):
+        loadError = error
+      case let .success(newValue):
+        loadError = nil
+        wrappedValue = newValue ?? initialValue
       }
     }
+    if !isPreloaded {
+      isLoading = true
+      key.load(
+        context: .initialValue(initialValue),
+        continuation: LoadContinuation("\(key)", callback: callback)
+      )
+    }
+    self.subscription = key.subscribe(
+      context: .initialValue(initialValue),
+      subscriber: SharedSubscriber(callback: callback)
+    )
+  }
+
+  deinit {
+    #if canImport(Combine)
+      subject.send(completion: .finished)
+    #endif
   }
 
   var id: ObjectIdentifier { ObjectIdentifier(self) }
 
-  var wrappedValue: Key.Value {
-    access(keyPath: \.value)
-    return lock.withLock { value }
+  var isLoading: Bool {
+    get {
+      access(keyPath: \._isLoading)
+      return lock.withLock { _isLoading }
+    }
+    set {
+      withMutation(keyPath: \._isLoading) {
+        lock.withLock { _isLoading = newValue }
+      }
+    }
   }
 
-  func load() {
-    guard let newValue = key.load(initialValue: nil)
-    else { return }
-    withMutation(keyPath: \.value) {
-      lock.withLock { value = newValue }
+  var loadError: (any Error)? {
+    get {
+      access(keyPath: \._loadError)
+      return lock.withLock { _loadError }
+    }
+    set {
+      withMutation(keyPath: \._loadError) {
+        lock.withLock { _loadError = newValue }
+      }
+      if let newValue {
+        reportIssue(newValue)
+      }
+    }
+  }
+
+  var wrappedValue: Key.Value {
+    get {
+      access(keyPath: \.value)
+      return lock.withLock { value }
+    }
+    set {
+      withMutation(keyPath: \.value) {
+        lock.withLock { value = newValue }
+      }
+    }
+  }
+
+  func load() async throws {
+    isLoading = true
+    defer { isLoading = false }
+    do {
+      loadError = nil
+      let newValue = try await withUnsafeThrowingContinuation { continuation in
+        let key = key
+        key.load(
+          context: .userInitiated,
+          continuation: LoadContinuation("\(key)") { result in
+            continuation.resume(with: result)
+          }
+        )
+      }
+      guard let newValue else { return }
+      wrappedValue = newValue
+    } catch {
+      loadError = error
     }
   }
 
   func touch() {
     withMutation(keyPath: \.value) {}
+    withMutation(keyPath: \._isLoading) {}
+    withMutation(keyPath: \._loadError) {}
+    withMutation(keyPath: \._saveError) {}
   }
 
   func retain() {
@@ -258,6 +354,21 @@ final class _PersistentReference<Key: SharedReaderKey>:
 }
 
 extension _PersistentReference: MutableReference, Equatable where Key: SharedKey {
+  var saveError: (any Error)? {
+    get {
+      access(keyPath: \._saveError)
+      return lock.withLock { _saveError }
+    }
+    set {
+      withMutation(keyPath: \._saveError) {
+        lock.withLock { _saveError = newValue }
+      }
+      if let newValue {
+        reportIssue(newValue)
+      }
+    }
+  }
+
   var snapshot: Key.Value? {
     @Dependency(\.snapshots) var snapshots
     return snapshots[self]
@@ -283,15 +394,47 @@ extension _PersistentReference: MutableReference, Equatable where Key: SharedKey
 
   func withLock<R>(_ body: (inout Key.Value) throws -> R) rethrows -> R {
     try withMutation(keyPath: \.value) {
-      defer { key.save(value, immediately: false) }
+      saveError = nil
+      defer {
+        let key = key
+        key.save(
+          value,
+          context: .didSet,
+          continuation: SaveContinuation("\(key)") { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+              loadError = nil
+            case let .failure(error):
+              saveError = error
+            }
+          }
+        )
+      }
       return try lock.withLock {
         try body(&value)
       }
     }
   }
 
-  func save() {
-    key.save(lock.withLock { value }, immediately: true)
+  func save() async throws {
+    saveError = nil
+    do {
+      try await withUnsafeThrowingContinuation { continuation in
+        let key = key
+        key.save(
+          lock.withLock { value },
+          context: .userInitiated,
+          continuation: SaveContinuation("\(key)") { result in
+            continuation.resume(with: result)
+          }
+        )
+      }
+    } catch {
+      saveError = error
+      throw error
+    }
+    loadError = nil
   }
 
   static func == (lhs: _PersistentReference, rhs: _PersistentReference) -> Bool {
@@ -315,12 +458,20 @@ final class _ManagedReference<Key: SharedReaderKey>: Reference, Observable {
     base.id
   }
 
+  var isLoading: Bool {
+    base.isLoading
+  }
+
+  var loadError: (any Error)? {
+    base.loadError
+  }
+
   var wrappedValue: Key.Value {
     base.wrappedValue
   }
 
-  func load() {
-    base.load()
+  func load() async throws {
+    try await base.load()
   }
 
   func touch() {
@@ -339,6 +490,10 @@ final class _ManagedReference<Key: SharedReaderKey>: Reference, Observable {
 }
 
 extension _ManagedReference: MutableReference, Equatable where Key: SharedKey {
+  var saveError: (any Error)? {
+    base.saveError
+  }
+
   var snapshot: Key.Value? {
     base.snapshot
   }
@@ -357,8 +512,8 @@ extension _ManagedReference: MutableReference, Equatable where Key: SharedKey {
     try base.withLock(body)
   }
 
-  func save() {
-    base.save()
+  func save() async throws {
+    try await base.save()
   }
 
   static func == (lhs: _ManagedReference, rhs: _ManagedReference) -> Bool {
@@ -381,12 +536,20 @@ final class _AppendKeyPathReference<
     base.id
   }
 
+  var isLoading: Bool {
+    base.isLoading
+  }
+
+  var loadError: (any Error)? {
+    base.loadError
+  }
+
   var wrappedValue: Value {
     base.wrappedValue[keyPath: keyPath]
   }
 
-  func load() {
-    base.load()
+  func load() async throws {
+    try await base.load()
   }
 
   func touch() {
@@ -409,6 +572,10 @@ final class _AppendKeyPathReference<
 
 extension _AppendKeyPathReference: MutableReference, Equatable
 where Base: MutableReference, Path: WritableKeyPath<Base.Value, Value> {
+  var saveError: (any Error)? {
+    base.saveError
+  }
+
   var snapshot: Value? {
     base.snapshot?[keyPath: keyPath]
   }
@@ -429,8 +596,8 @@ where Base: MutableReference, Path: WritableKeyPath<Base.Value, Value> {
     try base.withLock { try body(&$0[keyPath: keyPath as WritableKeyPath]) }
   }
 
-  func save() {
-    base.save()
+  func save() async throws {
+    try await base.save()
   }
 
   static func == (lhs: _AppendKeyPathReference, rhs: _AppendKeyPathReference) -> Bool {
@@ -456,14 +623,22 @@ final class _OptionalReference<Base: Reference<Value?>, Value>:
     base.id
   }
 
+  var isLoading: Bool {
+    base.isLoading
+  }
+
+  var loadError: (any Error)? {
+    base.loadError
+  }
+
   var wrappedValue: Value {
     guard let wrappedValue = base.wrappedValue else { return lock.withLock { cachedValue } }
     lock.withLock { cachedValue = wrappedValue }
     return wrappedValue
   }
 
-  func load() {
-    base.load()
+  func load() async throws {
+    try await base.load()
   }
 
   func touch() {
@@ -485,6 +660,10 @@ final class _OptionalReference<Base: Reference<Value?>, Value>:
 }
 
 extension _OptionalReference: MutableReference, Equatable where Base: MutableReference {
+  var saveError: (any Error)? {
+    base.saveError
+  }
+
   var snapshot: Value? {
     base.snapshot ?? nil
   }
@@ -511,100 +690,11 @@ extension _OptionalReference: MutableReference, Equatable where Base: MutableRef
     }
   }
 
-  func save() {
-    base.save()
+  func save() async throws {
+    try await base.save()
   }
 
   static func == (lhs: _OptionalReference, rhs: _OptionalReference) -> Bool {
     lhs.base == rhs.base
   }
 }
-
-#if canImport(SwiftUI)
-  protocol _CachedReferenceProtocol<Value>: AnyObject, Sendable {
-    associatedtype Value
-    var cachedValue: Value { get }
-    func resetCache()
-  }
-
-  final class _CachedReference<Base: Reference>:
-    Reference,
-    @unchecked Sendable,
-    _CachedReferenceProtocol
-  {
-    private let base: Base
-    private let lock = NSRecursiveLock()
-    private var _cachedValue: Base.Value
-
-    var cachedValue: Base.Value {
-      get { lock.withLock { _cachedValue } }
-      set { lock.withLock { _cachedValue = newValue } }
-    }
-
-    init(base: Base) {
-      self.base = base
-      self._cachedValue = base.wrappedValue
-    }
-
-    var id: ObjectIdentifier {
-      base.id
-    }
-
-    var wrappedValue: Base.Value {
-      base.wrappedValue
-    }
-
-    func load() {
-      base.load()
-    }
-
-    func touch() {
-      base.touch()
-    }
-
-    #if canImport(Combine)
-      var publisher: any Publisher<Base.Value, Never> {
-        base.publisher
-      }
-    #endif
-
-    func resetCache() {
-      cachedValue = wrappedValue
-    }
-
-    var description: String {
-      base.description
-    }
-  }
-
-  extension _CachedReference: MutableReference, Equatable where Base: MutableReference {
-    var snapshot: Base.Value? {
-      base.snapshot
-    }
-
-    func takeSnapshot(
-      _ value: Base.Value,
-      fileID: StaticString,
-      filePath: StaticString,
-      line: UInt,
-      column: UInt
-    ) {
-      base.takeSnapshot(value, fileID: fileID, filePath: filePath, line: line, column: column)
-    }
-
-    func withLock<R>(_ body: (inout Base.Value) throws -> R) rethrows -> R {
-      try base.withLock { value in
-        cachedValue = value
-        return try body(&value)
-      }
-    }
-
-    func save() {
-      base.save()
-    }
-
-    static func == (lhs: _CachedReference, rhs: _CachedReference) -> Bool {
-      lhs.base == rhs.base
-    }
-  }
-#endif

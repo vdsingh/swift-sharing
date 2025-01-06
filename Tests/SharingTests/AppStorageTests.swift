@@ -184,18 +184,30 @@
 
     @Test func testPersistenceKeySubscription() async throws {
       let persistenceKey: AppStorageKey<Int> = .appStorage("shared")
-      let changes = LockIsolated<[Int?]>([])
-      var subscription: Optional = persistenceKey.subscribe(initialValue: nil) { value in
-        changes.withValue { $0.append(value) }
-      }
+      let changes = LockIsolated<[Result<Int?, any Error>]>([])
+      var subscription: Optional = persistenceKey.subscribe(
+        context: .userInitiated,
+        subscriber: SharedSubscriber { value in
+          changes.withValue { $0.append(value) }
+        }
+      )
       @Dependency(\.defaultAppStorage) var userDefaults
       userDefaults.set(1, forKey: "shared")
       userDefaults.set(42, forKey: "shared")
       subscription?.cancel()
       userDefaults.set(123, forKey: "shared")
       subscription = nil
-      #expect([1, 42] == changes.value)
-      #expect(123 == persistenceKey.load(initialValue: nil))
+      #expect(try [1, 42] == changes.value.map { try $0.get() })
+      await confirmation { confirm in
+        persistenceKey.load(
+          context: .userInitiated,
+          continuation: LoadContinuation { result in
+            let success = try? result.get()
+            #expect(success == 123)
+            confirm()
+          }
+        )
+      }
     }
 
     #if DEBUG
@@ -209,17 +221,17 @@
             """
             '@Shared(.appStorage("count"))' was given a new store object for an existing suite \
             name ("\(suiteName)").
-            
+
             Shared app storage for a given suite should all share the same store object to ensure \
             synchronization and observation. For example, define a store as a 'static let' and \
             refer to this single instance when creating shared app storage:
-            
+
                 extension UserDefaults {
                   nonisolated(unsafe) static let mySuite = UserDefaults(
                     suiteName: "\(suiteName)"
                   )!
                 }
-            
+
                 @Shared(.appStorage("count", store: .mySuite) var myProperty
             """
           )

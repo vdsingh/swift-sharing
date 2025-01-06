@@ -185,6 +185,9 @@ Sharing. Check out [this](./Examples) directory to see them all, including:
   * [Case Studies](./Examples/CaseStudies):
     A number of case studies demonstrating the built-in features of the library.
 
+  * [API Client](./Examples/APIClientDemo):
+    A demo showing how shared state can be powered by an API client.
+
   * [FirebaseDemo](./Examples/FirebaseDemo):
     A demo showing how shared state can be powered by a remote [Firebase][firebase] config.
 
@@ -217,7 +220,7 @@ simple as adding it to your `Package.swift`:
 
 ``` swift
 dependencies: [
-  .package(url: "https://github.com/pointfreeco/swift-sharing", from: "1.1.0")
+  .package(url: "https://github.com/pointfreeco/swift-sharing", from: "2.0.0")
 ]
 ```
 

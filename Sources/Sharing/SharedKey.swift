@@ -14,11 +14,26 @@ public protocol SharedKey<Value>: SharedReaderKey {
   ///
   /// - Parameters:
   ///   - value: The value to save.
-  ///   - immediately: Tells the shared key to save the value as soon as possible. A key may choose
-  ///     by default to delay writing to an external source in some way, for example throttling or
-  ///     debouncing, if `immediately` is `false`. If `immediately` is `true` it should bypass these
-  ///     delays.
-  func save(_ value: Value, immediately: Bool)
+  ///   - context: The context of saving a value.
+  ///   - continuation: A continuation that should be notified upon the completion of saving a
+  ///     shared value.
+  func save(_ value: Value, context: SaveContext, continuation: SaveContinuation)
+}
+
+/// The context in which a value is saved by a ``SharedKey``.
+///
+/// A key may use this context to determine the behavior of the save. For example, an external
+/// system that may be expensive to write to very frequently (_i.e._ network or file IO) could
+/// choose to debounce saves when the value is simply updated in memory (via
+/// ``Shared/withLock(_:fileID:filePath:line:column:)``), but forgo debouncing with an immediate
+/// write when the value is saved explicitly (via ``Shared/save()``).
+public enum SaveContext: Hashable, Sendable {
+  /// The value is being saved implicitly (after a mutation via
+  /// ``Shared/withLock(_:fileID:filePath:line:column:)``).
+  case didSet
+
+  /// The value is being saved explicitly (via ``Shared/save()``).
+  case userInitiated
 }
 
 extension Shared {
@@ -34,7 +49,7 @@ extension Shared {
     _ key: some SharedKey<Value>
   ) {
     @Dependency(PersistentReferences.self) var persistentReferences
-    self.init(rethrowing: wrappedValue(), key)
+    self.init(rethrowing: wrappedValue(), key, isPreloaded: false)
   }
 
   /// Creates a shared reference to an optional value using a shared key.
@@ -69,19 +84,26 @@ extension Shared {
     self.init(wrappedValue: wrappedValue(), key)
   }
 
-  /// Creates a shared reference to a value using a shared key.
+  /// Creates a shared reference to a value using a shared key by loading it from its external
+  /// source.
   ///
-  /// If the given shared key cannot load a value, an error is thrown. For a non-throwing
-  /// version of this initializer, see ``init(wrappedValue:_:)-5xce4``.
+  /// If the given shared key cannot load a value, an error is thrown. For a non-throwing,
+  /// synchronous version of this initializer, see ``init(wrappedValue:_:)-5xce4``.
   ///
   /// - Parameter key: A shared key associated with the shared reference. It is responsible for
   ///   loading and saving the shared reference's value from some external source.
-  public init(require key: some SharedKey<Value>) throws {
-    let value = {
-      guard let value = key.load(initialValue: nil) else { throw LoadError() }
-      return value
+  public init<Key: SharedKey<Value>>(require key: Key) async throws {
+    let value = try await withUnsafeThrowingContinuation { continuation in
+      key.load(
+        context: .userInitiated,
+        continuation: LoadContinuation { result in
+          continuation.resume(with: result)
+        }
+      )
     }
-    try self.init(rethrowing: value(), key)
+    guard let value else { throw LoadError() }
+    self.init(rethrowing: value, key, isPreloaded: true)
+    if let loadError { throw loadError }
   }
 
   @available(*, unavailable, message: "Assign a default value")
@@ -90,10 +112,18 @@ extension Shared {
   }
 
   private init(
-    rethrowing value: @autoclosure () throws -> Value, _ key: some SharedKey<Value>
+    rethrowing value: @autoclosure () throws -> Value, _ key: some SharedKey<Value>,
+    isPreloaded: Bool
   ) rethrows {
     @Dependency(PersistentReferences.self) var persistentReferences
-    self.init(reference: try persistentReferences.value(forKey: key, default: try value()))
+    self.init(
+      reference: try persistentReferences.value(
+        forKey: key,
+        default: try value(),
+        isPreloaded: isPreloaded
+      )
+    )
   }
+
   private struct LoadError: Error {}
 }

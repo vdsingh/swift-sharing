@@ -372,19 +372,13 @@
       )
     }
 
-    public func load(initialValue: Value?) -> Value? {
-      lookup.loadValue(from: store.wrappedValue, at: key, default: initialValue)
-    }
-
-    public func save(_ value: Value, immediately: Bool) {
-      lookup.saveValue(value, to: store.wrappedValue, at: key)
+    public func load(context: LoadContext<Value>, continuation: LoadContinuation<Value>) {
+      continuation.resume(with: .success(lookupValue(default: context.initialValue)))
     }
 
     public func subscribe(
-      initialValue: Value?,
-      didSet receiveValue: @escaping @Sendable (_ newValue: Value?) -> Void
+      context: LoadContext<Value>, subscriber: SharedSubscriber<Value>
     ) -> SharedSubscription {
-      let previousValue = LockIsolated(initialValue)
       let removeObserver: @Sendable () -> Void
       let keyContainsPeriod = key.contains(".")
       if keyContainsPeriod || key.hasPrefix("@") {
@@ -420,12 +414,13 @@
             """
           )
         }
+        let previousValue = LockIsolated(context.initialValue)
         let userDefaultsDidChange = NotificationCenter.default.addObserver(
           forName: UserDefaults.didChangeNotification,
           object: store.wrappedValue,
           queue: nil
         ) { _ in
-          let newValue = load(initialValue: initialValue)
+          let newValue = lookupValue(default: context.initialValue)
           defer { previousValue.withValue { $0 = newValue } }
           func isEqual<T>(_ lhs: T, _ rhs: T) -> Bool? {
             func open<U: Equatable>(_ lhs: U) -> Bool {
@@ -436,20 +431,22 @@
           }
           guard
             !(isEqual(newValue, previousValue.value) ?? false)
-              || (isEqual(newValue, initialValue) ?? true)
+              || (isEqual(newValue, context.initialValue) ?? true)
           else {
             return
           }
           guard !SharedAppStorageLocals.isSetting
           else { return }
-          DispatchQueue.main.async { receiveValue(newValue) }
+          DispatchQueue.main.async {
+            subscriber.yield(with: .success(newValue))
+          }
         }
         removeObserver = { NotificationCenter.default.removeObserver(userDefaultsDidChange) }
       } else {
         let observer = Observer {
           guard !SharedAppStorageLocals.isSetting
           else { return }
-          receiveValue(load(initialValue: initialValue))
+          subscriber.yield(with: .success(lookupValue(default: context.initialValue)))
         }
         store.wrappedValue.addObserver(observer, forKeyPath: key, context: nil)
         removeObserver = { store.wrappedValue.removeObserver(observer, forKeyPath: key) }
@@ -461,7 +458,7 @@
           object: nil,
           queue: .main
         ) { _ in
-          receiveValue(load(initialValue: initialValue))
+          subscriber.yield(with: .success(lookupValue(default: context.initialValue)))
         }
       } else {
         willEnterForeground = nil
@@ -472,6 +469,15 @@
           NotificationCenter.default.removeObserver(willEnterForeground)
         }
       }
+    }
+
+    public func save(_ value: Value, context _: SaveContext, continuation: SaveContinuation) {
+      lookup.saveValue(value, to: store.wrappedValue, at: key)
+      continuation.resume()
+    }
+
+    private func lookupValue(default initialValue: Value?) -> Value? {
+      lookup.loadValue(from: store.wrappedValue, at: key, default: initialValue)
     }
 
     private final class Observer: NSObject, Sendable {
@@ -543,7 +549,11 @@
 
   private protocol Lookup<Value>: Sendable {
     associatedtype Value: Sendable
-    func loadValue(from store: UserDefaults, at key: String, default defaultValue: Value?) -> Value?
+    func loadValue(
+      from store: UserDefaults,
+      at key: String,
+      default defaultValue: Value?
+    ) -> Value?
     func saveValue(_ newValue: Value, to store: UserDefaults, at key: String)
   }
 

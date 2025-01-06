@@ -76,9 +76,19 @@ if remoteConfig.isToggleEnabled {
 - ``wrappedValue``
 - ``projectedValue``
 
-### Reloading the value
+### Loading the value
 
 - ``load()``
+- ``isLoading``
+- ``init(require:)``
+
+### Error handling
+
+- ``loadError``
+
+### SwiftUI integration
+
+- ``Swift/RangeReplaceableCollection``
 
 ### Combine integration
 

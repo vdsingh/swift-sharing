@@ -13,32 +13,37 @@ struct LocalStorageKey<Value: Codable & Sendable>: SharedKey {
 
   var id: some Hashable { key }
 
-  func load(initialValue: Value?) -> Value? {
-    guard
-      let string = JSObject.global.window.localStorage.getItem(key).string,
-      let value = try? JSONDecoder().decode(Value.self, from: Data(string.utf8))
-    else { return nil }
-    return value
+  func load(context _: LoadContext<Value>, continuation: LoadContinuation<Value>) {
+    continuation.resume(with: Result { try getAndDecodeItem() })
   }
 
   func subscribe(
-    initialValue: Value?,
-    didSet receiveValue: @escaping (Value?) -> Void
+    context _: LoadContext<Value>, subscriber: SharedSubscriber<Value>
   ) -> SharedSubscription {
     nonisolated(unsafe) let listener = JSClosure { _ in
-      receiveValue(load(initialValue: initialValue))
+      subscriber.yield(with: Result { try getAndDecodeItem() })
       return .undefined
     }
     _ = JSObject.global.window.addEventListener("storage", listener)
     return SharedSubscription {
-       _ = JSObject.global.window.removeEventListener("storage", listener)
+      _ = JSObject.global.window.removeEventListener("storage", listener)
     }
   }
 
-  func save(_ value: Value, immediately: Bool) {
-    _ = try? JSObject.global.window.localStorage.setItem(
-      key,
-      String(decoding: JSONEncoder().encode(value), as: UTF8.self)
+  func save(_ value: Value, context _: SaveContext, continuation: SaveContinuation) {
+    continuation.resume(
+      with: Result {
+        _ = try JSObject.global.window.localStorage.setItem(
+          key,
+          String(decoding: JSONEncoder().encode(value), as: UTF8.self)
+        )
+      }
     )
+  }
+
+  private func getAndDecodeItem() throws -> Value? {
+    guard let string = JSObject.global.window.localStorage.getItem(key).string
+    else { return nil }
+    return try JSONDecoder().decode(Value.self, from: Data(string.utf8))
   }
 }

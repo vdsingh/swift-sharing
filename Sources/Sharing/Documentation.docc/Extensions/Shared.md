@@ -34,11 +34,11 @@ also update to hold the freshest data.
 
 The `@Shared` property wrapper gives you a succinct and consistent way to persist any kind of data
 in your application. The library comes with 3 strategies:
-[`appStorage`](<doc:SharedReaderKey/appStorage(_:)-45ltk>),
+[`appStorage`](<doc:SharedReaderKey/appStorage(_:store:)-45ltk>),
 [`fileStorage`](<doc:SharedReaderKey/fileStorage(_:decoder:encoder:)>), and
 [`inMemory`](<doc:SharedReaderKey/inMemory(_:)>). 
 
-The [`appStorage`](<doc:SharedReaderKey/appStorage(_:)-45ltk>) strategy is useful for store small
+The [`appStorage`](<doc:SharedReaderKey/appStorage(_:store:)-45ltk>) strategy is useful for store small
 pieces of simple data in user defaults, such as settings:
 
 ```swift
@@ -133,12 +133,19 @@ See <doc:Testing> for more information on how to test your features when using `
 
 ### Loading and saving the value
 
+- ``init(require:)``
 - ``load()``
+- ``isLoading``
 - ``save()``
+
+### Error handling
+
+- ``loadError``
+- ``saveError``
 
 ### SwiftUI integration
 
-- ``Swift/Array``
+- ``Swift/RangeReplaceableCollection``
 - ``SwiftUICore/Binding``
 
 ### Combine integration

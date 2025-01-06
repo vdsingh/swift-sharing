@@ -49,13 +49,15 @@ public struct SharedChangeTracker: Hashable, Sendable {
       column: UInt
     ) {
       lock.withLock {
-        var change = storage[ObjectIdentifier(key)] as? Change<Value> ?? Change(
-          reference: key,
-          fileID: fileID,
-          filePath: filePath,
-          line: line,
-          column: column
-        )
+        var change =
+          storage[ObjectIdentifier(key)] as? Change<Value>
+          ?? Change(
+            reference: key,
+            fileID: fileID,
+            filePath: filePath,
+            line: line,
+            column: column
+          )
         defer { storage[ObjectIdentifier(key)] = change }
         change.value = value
       }
@@ -107,20 +109,6 @@ public struct SharedChangeTracker: Hashable, Sendable {
     }
   }
 
-  @available(*, deprecated)
-  static func tracker(for key: some MutableReference) -> Self? {
-    @Dependency(SharedChangeTrackersKey.self) var sharedChangeTrackers
-    var sharedChangeTracker: Self?
-    for tracker in sharedChangeTrackers {
-      if sharedChangeTracker == nil, tracker.changes.hasChanges(for: key) {
-        sharedChangeTracker = tracker
-      } else if tracker.changes.hasChanges(for: key) {
-        break
-      }
-    }
-    return sharedChangeTracker
-  }
-
   fileprivate let changes: Changes
 
   public var hasChanges: Bool { changes.hasChanges }
@@ -162,7 +150,7 @@ public struct SharedChangeTracker: Hashable, Sendable {
   }
 }
 
-fileprivate protocol AnyChange<Value> {
+private protocol AnyChange<Value> {
   associatedtype Value
   var key: any MutableReference { get }
   var value: Value { get }

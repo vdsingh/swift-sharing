@@ -29,15 +29,6 @@ public struct Shared<Value> {
   }
 
   init(reference: any MutableReference<Value>) {
-    #if canImport(SwiftUI)
-      if !isTesting, Value.self is any _MutableIdentifiedCollection.Type {
-        func open(_ reference: some MutableReference<Value>) -> any MutableReference<Value> {
-          _CachedReference(base: reference)
-        }
-        self.box = Box(open(reference))
-        return
-      }
-    #endif
     self.box = Box(reference)
   }
 
@@ -46,13 +37,13 @@ public struct Shared<Value> {
   /// - Parameters:
   ///   - value: A value to wrap.
   #if compiler(>=6)
-  public init(value: sending Value) {
-    self.init(reference: _BoxReference(wrappedValue: value))
-  }
+    public init(value: sending Value) {
+      self.init(reference: _BoxReference(wrappedValue: value))
+    }
   #else
-  public init(value: Value) {
-    self.init(reference: _BoxReference(wrappedValue: value))
-  }
+    public init(value: Value) {
+      self.init(reference: _BoxReference(wrappedValue: value))
+    }
   #endif
 
   /// Unwraps a shared reference to an optional value.
@@ -102,9 +93,29 @@ public struct Shared<Value> {
   ///   }
   /// }
   /// ```
+  ///
+  /// To mutate this value use ``withLock(_:fileID:filePath:line:column:)``.
   #if compiler(>=6)
-  public var wrappedValue: Value {
-    get {
+    public var wrappedValue: Value {
+      get {
+        @Dependency(\.snapshots) var snapshots
+        if snapshots.isAsserting {
+          return reference.snapshot ?? reference.wrappedValue
+        } else {
+          return reference.wrappedValue
+        }
+      }
+      @available(
+        *,
+        unavailable,
+        message: "Use '$shared.withLock' to modify a shared value with exclusive access."
+      )
+      nonmutating set {
+        withLock { $0 = newValue }
+      }
+    }
+  #else
+    public var wrappedValue: Value {
       @Dependency(\.snapshots) var snapshots
       if snapshots.isAsserting {
         return reference.snapshot ?? reference.wrappedValue
@@ -112,30 +123,12 @@ public struct Shared<Value> {
         return reference.wrappedValue
       }
     }
-    @available(
-      *,
-      unavailable,
-      message: "Use '$shared.withLock' to modify a shared value with exclusive access."
-    )
-    nonmutating set {
-      withLock { $0 = newValue }
-    }
-  }
-  #else
-  public var wrappedValue: Value {
-    @Dependency(\.snapshots) var snapshots
-    if snapshots.isAsserting {
-      return reference.snapshot ?? reference.wrappedValue
-    } else {
-      return reference.wrappedValue
-    }
-  }
   #endif
 
   /// Perform an operation on shared state with isolated access to the underlying value.
-  /// 
+  ///
   /// See <doc:MutatingSharedState> for more information.
-  /// 
+  ///
   /// - Parameters
   ///   - operation: An operation given mutable, isolated access to the underlying shared value.
   ///   - fileID: The source `#fileID` associated with the lock.
@@ -287,8 +280,40 @@ public struct Shared<Value> {
   /// synchronized. Some persistence strategies, however, may not have the ability to subscribe to
   /// their external source. In these cases, you should call this method whenever you need the most
   /// up-to-date value.
-  public func load() {
-    reference.load()
+  public func load() async throws {
+    try await reference.load()
+  }
+
+  /// Whether or not an associated shared key is loading data from an external source.
+  public var isLoading: Bool {
+    reference.isLoading
+  }
+
+  /// An error encountered during the most recent attempt to load data.
+  ///
+  /// This value is `nil` unless a load attempt failed. It contains the latest error from the
+  /// underlying ``SharedReaderKey``. Access it from `@Shared`'s projected value:
+  ///
+  /// ```swift
+  /// @Shared(.fileStorage(.users)) var users: [User] = []
+  ///
+  /// var body: some View {
+  ///   if let loadError = $users.loadError {
+  ///     ContentUnavailableView {
+  ///       Label("Failed to load users", systemImage: "xmark.circle")
+  ///     } description: {
+  ///       Text(loadError.localizedDescription)
+  ///     }
+  ///   } else {
+  ///     ForEach(users) { user in /* ... */ }
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// > When a load error occurs, ``wrappedValue`` retains results from the last successful fetch.
+  /// > Its value will update once a new load succeeds.
+  public var loadError: (any Error)? {
+    reference.loadError
   }
 
   /// Requests the underlying value be persisted to an external source.
@@ -300,8 +325,16 @@ public struct Shared<Value> {
   /// save to the external source immediately upon modification. Some persistence strategies,
   /// however, may choose to debounce this work, in which case it may be desirable to tell the
   /// strategy to save more eagerly.
-  public func save() {
-    reference.save()
+  public func save() async throws {
+    try await reference.save()
+  }
+
+  /// An error encountered during the most recent attempt to save data.
+  ///
+  /// This value is `nil` unless a save attempt failed. It contains the latest error from the
+  /// underlying ``SharedKey``.
+  public var saveError: (any Error)? {
+    reference.saveError
   }
 
   private final class Box: @unchecked Sendable {
