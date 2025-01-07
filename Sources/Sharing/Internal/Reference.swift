@@ -197,7 +197,7 @@ final class _PersistentReference<Key: SharedReaderKey>:
   private var _referenceCount = 0
   private var subscription: SharedSubscription?
 
-  init(key: Key, value initialValue: Key.Value, isPreloaded: Bool) {
+  init(key: Key, value initialValue: Key.Value, skipInitialLoad: Bool) {
     self.key = key
     self.value = initialValue
     let callback: @Sendable (Result<Value?, any Error>) -> Void = { [weak self] result in
@@ -211,15 +211,18 @@ final class _PersistentReference<Key: SharedReaderKey>:
         wrappedValue = newValue ?? initialValue
       }
     }
-    if !isPreloaded {
+    if !skipInitialLoad {
       isLoading = true
       key.load(
         context: .initialValue(initialValue),
         continuation: LoadContinuation("\(key)", callback: callback)
       )
     }
+    let context: LoadContext<Key.Value> = skipInitialLoad
+      ? .userInitiated
+      : .initialValue(initialValue)
     self.subscription = key.subscribe(
-      context: .initialValue(initialValue),
+      context: context,
       subscriber: SharedSubscriber(callback: callback)
     )
   }
@@ -276,17 +279,23 @@ final class _PersistentReference<Key: SharedReaderKey>:
     defer { isLoading = false }
     do {
       loadError = nil
-      let newValue = try await withUnsafeThrowingContinuation { continuation in
+      try await withUnsafeThrowingContinuation { continuation in
         let key = key
         key.load(
           context: .userInitiated,
           continuation: LoadContinuation("\(key)") { result in
-            continuation.resume(with: result)
+            switch result {
+            case .success(.some(let newValue)):
+              self.wrappedValue = newValue
+              continuation.resume()
+            case .success(.none):
+              continuation.resume()
+            case .failure(let error):
+              continuation.resume(throwing: error)
+            }
           }
         )
       }
-      guard let newValue else { return }
-      wrappedValue = newValue
     } catch {
       loadError = error
     }

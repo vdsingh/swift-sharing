@@ -78,14 +78,14 @@ extension SharedReader {
   /// - Parameters:
   ///   - wrappedValue: A default value that is used when no value can be returned from the
   ///     shared key.
-  ///   - key: A shared key associated with the shared reference. It is responsible for loading
-  ///     and saving the shared reference's value from some external source.
+  ///   - key: A shared key associated with the shared reference. It is responsible for loading the
+  ///     shared reference's value from some external source.
   public init(
     wrappedValue: @autoclosure () -> Value,
     _ key: some SharedReaderKey<Value>
   ) {
     @Dependency(PersistentReferences.self) var persistentReferences
-    self.init(rethrowing: wrappedValue(), key, isPreloaded: false)
+    self.init(rethrowing: wrappedValue(), key, skipInitialLoad: false)
   }
 
   @_disfavoredOverload
@@ -95,13 +95,13 @@ extension SharedReader {
     _ key: some SharedKey<Value>
   ) {
     @Dependency(PersistentReferences.self) var persistentReferences
-    self.init(rethrowing: wrappedValue(), key, isPreloaded: false)
+    self.init(rethrowing: wrappedValue(), key, skipInitialLoad: false)
   }
 
   /// Creates a shared reference to an optional, read-only value using a shared key.
   ///
   /// - Parameter key: A shared key associated with the shared reference. It is responsible for
-  ///   loading and saving the shared reference's value from some external source.
+  ///   loading the shared reference's value from some external source.
   @_disfavoredOverload
   public init<Wrapped>(_ key: some SharedReaderKey<Value>) where Value == Wrapped? {
     self.init(wrappedValue: nil, key)
@@ -116,7 +116,7 @@ extension SharedReader {
   /// Creates a shared reference to a read-only value using a shared key with a default value.
   ///
   /// - Parameter key: A shared key associated with the shared reference. It is responsible for
-  ///   loading and saving the shared reference's value from some external source.
+  ///   loading the shared reference's value from some external source.
   public init(_ key: (some SharedReaderKey<Value>).Default) {
     self.init(wrappedValue: key.defaultValue(), key)
   }
@@ -133,8 +133,8 @@ extension SharedReader {
   /// - Parameters:
   ///   - wrappedValue: A default value that is used when no value can be returned from the
   ///     shared key.
-  ///   - key: A shared key associated with the shared reference. It is responsible for loading
-  ///     and saving the shared reference's value from some external source.
+  ///   - key: A shared key associated with the shared reference. It is responsible for loading the
+  ///     shared reference's value from some external source.
   @_disfavoredOverload
   public init(
     wrappedValue: @autoclosure () -> Value,
@@ -152,6 +152,38 @@ extension SharedReader {
     self.init(wrappedValue: wrappedValue(), key)
   }
 
+  /// Replaces a shared reference's key and attempts to load its value.
+  ///
+  /// - Parameter key: A shared key associated with the shared reference. It is responsible for
+  ///   loading the shared reference's value from some external source.
+  public func load(_ key: some SharedReaderKey<Value>) async throws {
+    await MainActor.run {
+      reference.touch()
+      @Dependency(PersistentReferences.self) var persistentReferences
+      reference = persistentReferences.value(
+        forKey: key,
+        default: wrappedValue,
+        skipInitialLoad: true
+      )
+    }
+    try await reference.load()
+  }
+
+  @_disfavoredOverload
+  @_documentation(visibility: private)
+  public func load(_ key: some SharedKey<Value>) async throws {
+    await MainActor.run {
+      reference.touch()
+      @Dependency(PersistentReferences.self) var persistentReferences
+      reference = persistentReferences.value(
+        forKey: key,
+        default: wrappedValue,
+        skipInitialLoad: true
+      )
+    }
+    try await reference.load()
+  }
+
   /// Creates a shared reference to a read-only value using a shared key by loading it from its
   /// external source.
   ///
@@ -159,7 +191,7 @@ extension SharedReader {
   /// synchronous version of this initializer, see ``init(wrappedValue:_:)-56tir``.
   ///
   /// - Parameter key: A shared key associated with the shared reference. It is responsible for
-  ///   loading and saving the shared reference's value from some external source.
+  ///   loading the shared reference's value from some external source.
   public init<Key: SharedReaderKey<Value>>(require key: Key) async throws {
     let value = try await withUnsafeThrowingContinuation { continuation in
       key.load(
@@ -170,7 +202,7 @@ extension SharedReader {
       )
     }
     guard let value else { throw LoadError() }
-    self.init(rethrowing: value, key, isPreloaded: true)
+    self.init(rethrowing: value, key, skipInitialLoad: true)
     if let loadError { throw loadError }
   }
 
@@ -186,7 +218,7 @@ extension SharedReader {
       )
     }
     guard let value else { throw LoadError() }
-    self.init(rethrowing: value, key, isPreloaded: true)
+    self.init(rethrowing: value, key, skipInitialLoad: true)
     if let loadError { throw loadError }
   }
 
@@ -204,14 +236,14 @@ extension SharedReader {
 
   private init(
     rethrowing value: @autoclosure () throws -> Value, _ key: some SharedReaderKey<Value>,
-    isPreloaded: Bool
+    skipInitialLoad: Bool
   ) rethrows {
     @Dependency(PersistentReferences.self) var persistentReferences
     self.init(
       reference: try persistentReferences.value(
         forKey: key,
         default: try value(),
-        isPreloaded: isPreloaded
+        skipInitialLoad: skipInitialLoad
       )
     )
   }

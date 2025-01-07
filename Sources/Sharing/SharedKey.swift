@@ -49,7 +49,7 @@ extension Shared {
     _ key: some SharedKey<Value>
   ) {
     @Dependency(PersistentReferences.self) var persistentReferences
-    self.init(rethrowing: wrappedValue(), key, isPreloaded: false)
+    self.init(rethrowing: wrappedValue(), key, skipInitialLoad: false)
   }
 
   /// Creates a shared reference to an optional value using a shared key.
@@ -84,6 +84,23 @@ extension Shared {
     self.init(wrappedValue: wrappedValue(), key)
   }
 
+  /// Replaces a shared reference's key and attempts to load its value.
+  ///
+  /// - Parameter key: A shared key associated with the shared reference. It is responsible for
+  ///   loading and saving the shared reference's value from some external source.
+  public func load(_ key: some SharedKey<Value>) async throws {
+    await MainActor.run {
+      reference.touch()
+      @Dependency(PersistentReferences.self) var persistentReferences
+      reference = persistentReferences.value(
+        forKey: key,
+        default: wrappedValue,
+        skipInitialLoad: true
+      )
+    }
+    try await reference.load()
+  }
+
   /// Creates a shared reference to a value using a shared key by loading it from its external
   /// source.
   ///
@@ -102,7 +119,7 @@ extension Shared {
       )
     }
     guard let value else { throw LoadError() }
-    self.init(rethrowing: value, key, isPreloaded: true)
+    self.init(rethrowing: value, key, skipInitialLoad: true)
     if let loadError { throw loadError }
   }
 
@@ -113,14 +130,14 @@ extension Shared {
 
   private init(
     rethrowing value: @autoclosure () throws -> Value, _ key: some SharedKey<Value>,
-    isPreloaded: Bool
+    skipInitialLoad: Bool
   ) rethrows {
     @Dependency(PersistentReferences.self) var persistentReferences
     self.init(
       reference: try persistentReferences.value(
         forKey: key,
         default: try value(),
-        isPreloaded: isPreloaded
+        skipInitialLoad: skipInitialLoad
       )
     )
   }
