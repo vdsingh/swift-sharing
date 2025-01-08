@@ -107,6 +107,9 @@ extension Shared {
   /// If the given shared key cannot load a value, an error is thrown. For a non-throwing,
   /// synchronous version of this initializer, see ``init(wrappedValue:_:)-5xce4``.
   ///
+  /// This initializer should only be used to create a brand new shared reference from a key. To
+  /// replace the key of an existing shared reference, use ``load(_:)``, instead.
+  ///
   /// - Parameter key: A shared key associated with the shared reference. It is responsible for
   ///   loading and saving the shared reference's value from some external source.
   public init<Key: SharedKey<Value>>(require key: Key) async throws {
