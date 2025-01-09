@@ -27,8 +27,8 @@ import Testing
     #expect($value.saveError is SaveError)
   }
 
-  @Test func loadError() {
-    struct Key: Hashable, Sendable, SharedReaderKey {
+  @Test func implicitLoadError() {
+    struct Key: Sendable, SharedReaderKey {
       let id = UUID()
       func load(context: LoadContext<Int>, continuation: LoadContinuation<Int>) {
         continuation.resume(throwing: LoadError())
@@ -46,6 +46,55 @@ import Testing
       #expect($count.loadError != nil)
     } matching: {
       $0.description == "Caught error: LoadError()"
+    }
+  }
+  
+  @Test func userInitiatedLoadError() async {
+    struct LoadError: Error {}
+    struct Key: Hashable, Sendable, SharedReaderKey {
+      let id = UUID()
+      func load(context: LoadContext<Int>, continuation: LoadContinuation<Int>) {
+        switch context {
+        case .initialValue:
+          continuation.resume(returning: 42)
+        case .userInitiated:
+          continuation.resume(throwing: LoadError())
+        }
+      }
+      func subscribe(
+        context: LoadContext<Int>, subscriber: SharedSubscriber<Int>
+      ) -> SharedSubscription {
+        SharedSubscription {}
+      }
+    }
+    
+    @SharedReader(Key()) var value = 0
+    
+    await withKnownIssue {
+      await #expect(throws: LoadError.self) {
+        try await $value.load()
+      }
+    } matching: {
+      $0.description == "Caught error: LoadError()"
+    }
+  }
+
+  @Test func explicitRequireError() async {
+    struct LoadError: Error {}
+    struct Key: Sendable, SharedReaderKey {
+      let id = UUID()
+      func load(context: LoadContext<Int>, continuation: LoadContinuation<Int>) {
+        continuation.resume(throwing: LoadError())
+      }
+      func subscribe(
+        context: LoadContext<Int>, subscriber: SharedSubscriber<Int>
+      ) -> SharedSubscription {
+        SharedSubscription {}
+      }
+    }
+
+    await #expect(throws: LoadError.self) {
+      try await SharedReader(require: Key())
     }
   }
 
