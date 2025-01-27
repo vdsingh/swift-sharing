@@ -91,15 +91,17 @@ extension Shared {
   public func load(_ key: some SharedKey<Value>) async throws {
     await MainActor.run {
       @Dependency(PersistentReferences.self) var persistentReferences
-      projectedValue = Shared(
-        reference: persistentReferences.value(
-          forKey: key,
-          default: wrappedValue,
-          skipInitialLoad: true
+      SharedPublisherLocals.$isLoading.withValue(true) {
+        projectedValue = Shared(
+          reference: persistentReferences.value(
+            forKey: key,
+            default: wrappedValue,
+            skipInitialLoad: true
+          )
         )
-      )
+      }
     }
-    try await reference.load()
+    try await load()
   }
 
   /// Creates a shared reference to a value using a shared key by loading it from its external
