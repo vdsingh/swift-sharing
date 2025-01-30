@@ -13,9 +13,12 @@ the "isOn" key in user defaults will be immediately played back to the `@Shared`
 test proves:
 
 ```swift
-@Test func externalWrite() {
+@Test(.dependency(\.defaultAppStorage, .liveValue))
+func externalWrite() {
+  UserDefaults.standard.removeObject(forKey: "isOn")
+
   @Shared(.appStorage("isOn")) var isOn = true
-  #expect(isOn == true)  
+  #expect(isOn == true)
   UserDefaults.standard.set(false, forKey: "isOn")
   #expect(isOn == false)
 }

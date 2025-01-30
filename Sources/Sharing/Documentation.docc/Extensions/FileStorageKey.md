@@ -17,10 +17,13 @@ Further, any change made to the file stored at the URL will also be immediately 
 the `@Shared` value, as this test proves:
 
 ```swift
-@Test func externalWrite() throws {
-  let url = URL.temporaryDirectory.appending(component: "is-on.json") 
+@Test(.dependency(\.defaultFileStorage, .fileSystem))
+func externalWrite() throws {
+  let url = URL.temporaryDirectory.appending(component: "is-on.json")
+  try? FileManager.default.removeItem(at: url)
+
   @Shared(.fileStorage(url)) var isOn = true
-  #expect(isOn == true)  
+  #expect(isOn == true)
   try Data("false".utf8).write(to: url)
   #expect(isOn == false)
 }
