@@ -65,4 +65,35 @@ import Testing
       throw error
     }
   }
+
+  @Test func optionalDefault() async {
+    do {
+      @Shared(.inMemory("count")) var count: Int? = 0
+      #expect(count == 0)
+    }
+
+    do {
+      @Shared(.inMemory("nilCount")) var nilCount: Int? = nil
+      #expect(nilCount == nil)
+    }
+
+    do {
+      @Shared(.inMemory("optionalCount")) var optionalCount: Int?? = .some(0)
+      #expect(optionalCount == .some(0))
+    }
+
+    do {
+      @Shared(.inMemory("nestedOptionalCount")) var nestedOptionalCount: Int?? = .some(.none)
+      #expect(nestedOptionalCount == .some(.none))
+
+      @SharedReader(.inMemory("nestedOptionalCountReader")) var nestedOptionalCountReader: Int?? = .some(.none)
+      #expect(nestedOptionalCountReader == .some(.none))
+    }
+
+    do {
+      await #expect(throws: Error.self) {
+        try await Shared<Int?>(require: .inMemory("countNotExist"))
+      }
+    }
+  }
 }
