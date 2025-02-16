@@ -20,9 +20,9 @@ extension SharedReaderKey {
   ///
   /// - Parameter key: A string key identifying a value to share in memory.
   /// - Returns: An in-memory shared key.
-  public static func inMemory<Value>(_ key: String) -> Self
+  @MainActor public static func inMemory<Value>(_ key: String) -> Self
   where Self == InMemoryKey<Value> {
-    InMemoryKey(key)
+    InMemoryKey("\(key)_\(InMemoryStorage.keySuffix)")
   }
 }
 
@@ -71,6 +71,8 @@ extension InMemoryKey: CustomStringConvertible {
 }
 
 public struct InMemoryStorage: Hashable, Sendable {
+  @MainActor public static var keySuffix = ""
+
   private let id = UUID()
   fileprivate let values = Values()
   public init() {}
